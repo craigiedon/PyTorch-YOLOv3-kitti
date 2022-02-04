@@ -109,7 +109,7 @@ class YOLOLayer(nn.Module):
 
     def __init__(self, anchors, num_classes, img_dim):
         super(YOLOLayer, self).__init__()
-        self.anchors = anchors
+        self.anchors = anchors # Anchors are basically "prior grid boxes"...but it seems like here they are number pairs?
         self.num_anchors = len(anchors)
         self.num_classes = num_classes
         self.bbox_attrs = 5 + num_classes
@@ -239,7 +239,11 @@ class Darknet(nn.Module):
 
     def __init__(self, config_path, img_size=416):
         super(Darknet, self).__init__()
+        # Just parsing a whole big list of little mini modules along with their types and parameters
         self.module_defs = parse_model_config(config_path)
+
+        # Literally just builds every module listed in the config module, and sticks them in a big list
+        # NOTE: Check out the "YOLO Layer" for the main tricks probably?
         self.hyperparams, self.module_list = create_modules(self.module_defs)
         self.img_size = img_size
         self.seen = 0
@@ -260,6 +264,8 @@ class Darknet(nn.Module):
             elif module_def["type"] == "shortcut":
                 layer_i = int(module_def["from"])
                 x = layer_outputs[-1] + layer_outputs[layer_i]
+            # It looks like the yolo layer comes built with the ability to calculate its own losses, or just do the detection
+            # Depending on what you feed it
             elif module_def["type"] == "yolo":
                 # Train phase: get loss
                 if is_training:
