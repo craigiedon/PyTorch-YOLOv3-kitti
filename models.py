@@ -117,8 +117,8 @@ class YOLOLayer(nn.Module):
         self.ignore_thres = 0.5
         self.lambda_coord = 1
 
-        self.mse_loss = nn.MSELoss(size_average=True)  # Coordinate loss
-        self.bce_loss = nn.BCELoss(size_average=True)  # Confidence loss
+        self.mse_loss = nn.MSELoss(reduction='mean')  # Coordinate loss
+        self.bce_loss = nn.BCELoss(reduction='mean')  # Confidence loss
         self.ce_loss = nn.CrossEntropyLoss()  # Class loss
 
     def forward(self, x, targets=None):
@@ -183,8 +183,8 @@ class YOLOLayer(nn.Module):
             
 
             # Handle masks
-            mask = Variable(mask.type(ByteTensor))
-            conf_mask = Variable(conf_mask.type(ByteTensor))
+            mask = Variable(mask.type(torch.cuda.BoolTensor))
+            conf_mask = Variable(conf_mask.type(torch.cuda.BoolTensor))
 
             # Handle target variables
             tx = Variable(tx.type(FloatTensor), requires_grad=False)
@@ -196,7 +196,7 @@ class YOLOLayer(nn.Module):
 
             # Get conf mask where gt and where there is no gt
             conf_mask_true = mask
-            conf_mask_false = conf_mask - mask
+            conf_mask_false = conf_mask ^ mask
 
             # Mask outputs to ignore non-existing objects
             loss_x = self.mse_loss(x[mask], tx[mask])
