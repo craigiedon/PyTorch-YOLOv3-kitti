@@ -1,14 +1,15 @@
 import numpy as np
+import torch
 
-from utils.utils import bbox_iou
+from utils.utils import bbox_iou, bbox_iou_numpy
+from ortools.linear_solver import pywraplp
 
 
 def hungarian_matching(model_detections, tru_detections):
-    # model/tru detections: [(cx, cy, w, h)]
+    # model/tru detections: [[x_min, y_min, x_max, y_max]]
 
-    # Constraint: We can have false negatives, but we can't have false positives
-    # I.e., if there are 4 true detections, and only 3 NN detections, we match the 3 best, and we assume the rest were false negatives (how do we represent these negatives?)
-    # If there are 2 true detections and 5 NN Detections, pick the two best as matchups, and essentially just "discard" the false positives
+    n_model_dets = len(model_detections)
+    n_tru_dets = len(tru_detections)
 
     # Nothing to match, there are no true detections, and we are uninterested in false positives
     if len(tru_detections) == 0:
@@ -18,28 +19,78 @@ def hungarian_matching(model_detections, tru_detections):
     if len(model_detections) == 0:
         return [(None, i) for i, _ in enumerate(tru_detections)]
 
-    # Lets make an adjacency matrix of size len(model_detections) x len(tru_detections)
-    adjacency_matrix = np.zeros(len(model_detections), len(tru_detections))
-    for mi, model_det in enumerate(model_detections):
-        for ti, tru_det in enumerate(tru_detections):
-            adjacency_matrix[mi, ti] = bbox_iou(model_det, tru_det, False) # False required to state it is in cx, cy, w, h form...
+    iou_matrix = bbox_iou_numpy(model_detections, tru_detections)
+    if n_model_dets <= n_tru_dets:
+        m_t_pairings = hungarian_matching_ilp(iou_matrix)
 
-    # Here's where we can actually do the hungarian algorithm
+        tru_det_assigns = {tdi: mdi for mdi, tdi in m_t_pairings}
+        # Add in false negatives
+        m_t_pairings.extend([(None, j) for j in range(n_tru_dets) if j not in tru_det_assigns])
+
+    else:
+        t_m_pairings = hungarian_matching_ilp(iou_matrix.T)
+        # We don't care about false positives, they are ignored
+        m_t_pairings = [(i, j) for j, i in t_m_pairings]
+
+    return m_t_pairings
+
+
+def hungarian_matching_ilp(score_matrix):
+    solver = pywraplp.Solver.CreateSolver('SCIP')
+
+    # Variables
+    x = {}
+    n_rows = len(score_matrix)
+    n_cols = len(score_matrix[0])
+
+    assert n_rows <= n_cols, f"Number of rows must be less than or equal to num cols: n_rows: {n_rows}, n_cols: {n_cols}"
+
+    for i in range(n_rows):
+        for j in range(n_cols):
+            x[i, j] = solver.IntVar(0, 1, '')
+
+    # Constraints
+    # Each model detection must be assigned to exactly one true detection
+    for i in range(n_rows):
+        solver.Add(solver.Sum([x[i, j] for j in range(n_cols)]) == 1)
+
+    # Each tru detection must have at most 1 model detection assigned to it
+    for j in range(n_cols):
+        solver.Add(solver.Sum([x[i, j] for i in range(n_rows)]) <= 1)
+
+    # Objective
+    objective_terms = []
+    for i in range(n_rows):
+        for j in range(n_cols):
+            objective_terms.append(score_matrix[i][j] * x[i, j])
+    solver.Maximize(solver.Sum(objective_terms))
+
+    status = solver.Solve()
+    if status == pywraplp.Solver.OPTIMAL or status == pywraplp.Solver.FEASIBLE:
+        assignments = []
+        # print(f'Total cost = {solver.Objective().Value()}\n')
+        for i in range(n_rows):
+            for j in range(n_cols):
+                # Test if x[i, j] is 1 (with tolerance for floating point arithmetic).
+                if x[i, j].solution_value() >= 0.5:
+                    # print(f"Model det: {i} assigned to task {j}. Score = {score_matrix[i][j]}")
+                    assignments.append((i, j))
+        return assignments
+    raise ValueError("Feasible solution not found")
 
 
 def run():
-    model_detections = []
-    tru_detections = []
+    model_detections = np.array([[1, 1, 5, 5],
+                                 [300, 200, 350, 250],
+                                 [750, 750, 800, 800]
+                                 ])
+    tru_detections = np.array([[300, 200, 360, 260],
+                               [1.1, 0.8, 4.5, 4.5],
+                               [755, 740, 800, 800]
+                               ])
     matches = hungarian_matching(model_detections, tru_detections)
     print(matches)
 
 
 if __name__ == "__main__":
-    # So...is it:
-    # xmin, ymin, xmax, ymax? (The thing that comes out of the KITTI-Schema labels)
-
-    # OR
-
-    # cx, cy, width, height  (this comes out of the kitti2coco pipeline, its also what comes out of the NN detectors)
-    # Lets do with this for the hungardian matchings part
     run()

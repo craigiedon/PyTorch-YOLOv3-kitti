@@ -187,20 +187,33 @@ def bbox_iou_numpy(box1, box2):
     : ndarray
         (N, M) shaped array with IoUs
     """
+
+    # 0 - xmin
+    # 1 - ymin
+    # 2 - xmax
+    # 3 - ymax
+
+    # The area of box 2
     area = (box2[:, 2] - box2[:, 0]) * (box2[:, 3] - box2[:, 1])
 
+    # The "inner width" of the intersection - take the smallest x_max of the two boxes, then subtract the largest x_min
     iw = np.minimum(np.expand_dims(box1[:, 2], axis=1), box2[:, 2]) - np.maximum(
         np.expand_dims(box1[:, 0], 1), box2[:, 0]
     )
+
+    # The "inner height"
     ih = np.minimum(np.expand_dims(box1[:, 3], axis=1), box2[:, 3]) - np.maximum(
         np.expand_dims(box1[:, 1], 1), box2[:, 1]
     )
 
+    # No negatives (i.e., maybe the boxes do not intersect)
     iw = np.maximum(iw, 0)
     ih = np.maximum(ih, 0)
 
+    # Union area - area of box 1 + area of box 2 - their intersection
     ua = np.expand_dims((box1[:, 2] - box1[:, 0]) * (box1[:, 3] - box1[:, 1]), axis=1) + area - iw * ih
 
+    # Super tiny boxes not allowed
     ua = np.maximum(ua, np.finfo(float).eps)
 
     intersection = iw * ih
