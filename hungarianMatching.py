@@ -11,11 +11,11 @@ def hungarian_matching(model_detections, tru_detections):
     n_model_dets = len(model_detections)
     n_tru_dets = len(tru_detections)
 
-    # Nothing to match, there are no true detections, and we are uninterested in false positives
+    # No true detections --- every model detection is a false positive
     if len(tru_detections) == 0:
-        return []
+        return [(i, None) for i, _ in enumerate(model_detections)]
 
-    # No model detections, so every tru detection is marked as a false negative
+    # No model detections --- every tru detection is as a false negative
     if len(model_detections) == 0:
         return [(None, i) for i, _ in enumerate(tru_detections)]
 
@@ -23,14 +23,17 @@ def hungarian_matching(model_detections, tru_detections):
     if n_model_dets <= n_tru_dets:
         m_t_pairings = hungarian_matching_ilp(iou_matrix)
 
-        tru_det_assigns = {tdi: mdi for mdi, tdi in m_t_pairings}
         # Add in false negatives
+        tru_det_assigns = {tdi: mdi for mdi, tdi in m_t_pairings}
         m_t_pairings.extend([(None, j) for j in range(n_tru_dets) if j not in tru_det_assigns])
 
     else:
         t_m_pairings = hungarian_matching_ilp(iou_matrix.T)
-        # We don't care about false positives, they are ignored
         m_t_pairings = [(i, j) for j, i in t_m_pairings]
+
+        # Add in false positives
+        mod_det_assigns = {mdi: tdi for mdi, tdi in m_t_pairings}
+        m_t_pairings.extend([(i, None) for i in range(n_model_dets) if i not in mod_det_assigns])
 
     return m_t_pairings
 

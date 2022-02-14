@@ -25,9 +25,9 @@ from matplotlib.ticker import NullLocator
 def run():
     kitti_weights = 'weights/yolov3-kitti.weights'
     model_config_path = "config/yolov3-kitti.cfg"
-    img_folder = '/home/craig/data/KITTI/images/training'
-    coco_labels_folder = "/home/craig/data/KITTI/labels/training"
-    orig_salient_folder = "/home/craig/data/KITTI/labels-original/training"
+    img_folder = '/media/cinnes/Storage/data/KITTI/images/training'
+    coco_labels_folder = "/media/cinnes/Storage/data/KITTI/labels2coco/training"
+    orig_salient_folder = "/media/cinnes/Storage/data/KITTI/labels/training"
 
     os.makedirs('salient_dataset', exist_ok=True)
 
@@ -65,14 +65,18 @@ def run():
 
     # Visualize detections
     cmap = plt.get_cmap('tab20b')
-    colors = [cmap(i) for i in np.linspace(0, 1, 20)]
     for img_filename, img_det, tru_det in zip(img_filenames, img_detections, tru_detections):
         # print(img_filename)
-        if len(img_det) == len(tru_det):
+        if len(img_det) <= len(tru_det):
             continue
 
         img = np.array(Image.open(os.path.join(img_folder, img_filename)))
         fig, (ax_1, ax_2) = plt.subplots(2)
+
+        ax_1.title.set_text("NN Detections")
+        ax_2.title.set_text("Ground Truth")
+
+
         ax_1.imshow(img)
         ax_2.imshow(img)
 
@@ -83,39 +87,76 @@ def run():
         unique_labels = img_det[:, -1].cpu().unique()
         n_cls_preds = len(unique_labels)
         print("Class predictions:", n_cls_preds)
-        bbox_colors = random.sample(colors, n_cls_preds)
+        # bbox_colors = random.sample(colors, n_cls_preds)
 
         converted_img_det = np.array([rescale_nn_corners_to_orig_corners(imd[0], imd[1], imd[2], imd[3], img_size, img.shape[0], img.shape[1]) for imd in img_det])
         converted_tru_det = np.array([rescale_fractions_to_orig_corners(cx, cy, bw, bh, img.shape[0], img.shape[1]) for _, cx, cy, bw, bh in tru_det])
 
-        matches = hungarian_matching(converted_img_det, converted_tru_det)
+        raw_matches = hungarian_matching(converted_img_det, converted_tru_det)
+        filtered_matches = []
 
-        print(matches)
+        for mi, ti in raw_matches:
+            if mi is None:
+                filtered_matches.append((mi, ti))
+            elif ti is not None:
+                iou = bbox_iou_numpy(np.array([converted_img_det[mi]]), np.array([converted_tru_det[ti]]))
+                if iou > 0.01:
+                    filtered_matches.append((mi, ti))
+                else:
+                    filtered_matches.append((None, ti))
 
-        for i, (cls_num, *_) in enumerate(tru_det):
-            x_min, y_min, x_max, y_max = converted_tru_det[i]
-            bbox = patches.Rectangle((x_min, y_min), x_max - x_min, y_max - y_min, linewidth=2, edgecolor='red', facecolor='none')
-            ax_2.add_patch(bbox)
-            ax_2.text(x_min, y_min - 30, s=classes[int(cls_num)] + ' ' + "1.0", color='white', verticalalignment='top',
-                      bbox={'color': 'red', 'pad': 0})
+        colors = [cmap(i) for i in np.linspace(0, 1, len(filtered_matches))]
 
-        for i, (_, _, _, _, conf, cls_conf, cls_pred) in enumerate(img_det):
-            # print('\t+ Label: %s, Conf: %.5f' % (classes[int(cls_pred)], cls_conf.item()))
+        for mi, ti in filtered_matches:
+            assert ti is not None
 
-            # Rescale coordinates to original dimensions
-            x1, y1, x2, y2 = converted_img_det[i]
+            bbox_color = colors[ti]
+            tru_x_min, tru_y_min, tru_x_max, tru_y_max = converted_tru_det[ti]
+            tru_bbox = patches.Rectangle((tru_x_min, tru_y_min), tru_x_max - tru_x_min, tru_y_max - tru_y_min, linewidth=2, edgecolor=bbox_color, facecolor='none')
+            ax_2.add_patch(tru_bbox)
 
-            color = bbox_colors[int(np.where(unique_labels == int(cls_pred))[0])]
-            bbox = patches.Rectangle((x1, y1), x2 - x1, y2 - y1, linewidth=2,
-                                     edgecolor=color,
-                                     facecolor='none')
-            ax_1.add_patch(bbox)
-            ax_1.text(x1, y1 - 30, s=classes[int(cls_pred)] + ' ' + str('%.4f' % cls_conf.item()), color='white', verticalalignment='top',
-                      bbox={'color': color, 'pad': 0})
+            if mi is not None:
+                im_x_min, im_y_min, im_x_max, im_y_max = converted_img_det[mi]
+                im_cls_pred = img_det[mi][6]
+                im_cls_conf = img_det[mi][5]
+                im_bbox = patches.Rectangle((im_x_min, im_y_min), im_x_max - im_x_min, im_y_max - im_y_min, linewidth=2, edgecolor=bbox_color, facecolor='none')
+                ax_1.add_patch(im_bbox)
 
-        plt.axis('off')
-        plt.gca().xaxis.set_major_locator(NullLocator())
-        plt.gca().yaxis.set_major_locator(NullLocator())
+                ax_1.text(im_x_min, im_y_min - 30, s=f'{classes[int(im_cls_pred.item())]} ({mi}): {im_cls_conf.item():.2f}', color='white', verticalalignment='top',
+                          bbox={'color': bbox_color, 'pad': 0})
+
+        # TODO:
+        ## OK! Now that you have the filtered matches (with false negatives). Its time to create your schema lines.
+        ## Format: Salient Variables (at minimum class, 3d pos in camera, level of obscured... but refer to kitti schema ) , Detection Variables (Detected-Yes-No, 4-D bounding box in cx cy width height format)
+
+
+        # for i, (cls_num, *_) in enumerate(tru_det):
+        #     x_min, y_min, x_max, y_max = converted_tru_det[i]
+        #     bbox = patches.Rectangle((x_min, y_min), x_max - x_min, y_max - y_min, linewidth=2, edgecolor='red', facecolor='none')
+        #     ax_2.add_patch(bbox)
+        #     ax_2.text(x_min, y_min - 30, s=classes[int(cls_num)] + ' ' + "1.0", color='white', verticalalignment='top',
+        #               bbox={'color': 'red', 'pad': 0})
+        #
+        # for i, (_, _, _, _, conf, cls_conf, cls_pred) in enumerate(img_det):
+        #     # print('\t+ Label: %s, Conf: %.5f' % (classes[int(cls_pred)], cls_conf.item()))
+        #
+        #     x1, y1, x2, y2 = converted_img_det[i]
+        #
+        #     color = bbox_colors[int(np.where(unique_labels == int(cls_pred))[0])]
+        #     bbox = patches.Rectangle((x1, y1), x2 - x1, y2 - y1, linewidth=2,
+        #                              edgecolor=color,
+        #                              facecolor='none')
+        #     ax_1.add_patch(bbox)
+        #     ax_1.text(x1, y1 - 30, s=classes[int(cls_pred)] + ' ' + str('%.4f' % cls_conf.item()), color='white', verticalalignment='top',
+        #               bbox={'color': color, 'pad': 0})
+
+        ax_1.axis('off')
+        ax_1.xaxis.set_major_locator(NullLocator())
+        ax_1.yaxis.set_major_locator(NullLocator())
+
+        ax_2.axis('off')
+        ax_2.xaxis.set_major_locator(NullLocator())
+        ax_2.yaxis.set_major_locator(NullLocator())
         plt.show()
 
     # print(f'Salient Variables {}')
