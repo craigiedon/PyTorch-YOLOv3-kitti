@@ -1,0 +1,11 @@
+digraph {
+	sigma [label=sigma fillcolor=white shape=ellipse style=filled]
+	"linear.weight" [label="linear.weight" fillcolor=white shape=ellipse style=filled]
+	"linear.bias" [label="linear.bias" fillcolor=white shape=ellipse style=filled]
+	subgraph cluster_data {
+		label=data labeljust=r labelloc=b
+		obs [label=obs fillcolor=grey shape=ellipse style=filled]
+	}
+	"linear.weight" -> obs
+	sigma -> obs
+}

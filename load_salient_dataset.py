@@ -2,89 +2,122 @@ import numpy as np
 import matplotlib.pyplot as plt
 from itertools import groupby
 
+import torch
+from torch.utils.data import Dataset, DataLoader
+from torch.utils.data.dataset import T_co
 
-def discretize_trunctation(trunc_val):
-    return int(trunc_val * 3)
+from utils.utils import load_classes
 
 
-salient_input_path = "salient_dataset/salient_inputs.txt"
-salient_label_path = "salient_dataset/salient_labels.txt"
+def discretize_trunctation(trunc_val, buckets):
+    return int(trunc_val * (buckets - 1))
 
-s_inp = np.loadtxt(salient_input_path)
-s_label = np.loadtxt(salient_label_path)
 
-# detected_inp_label = [(inp, lab) for inp, lab in zip(s_inp, s_label) if lab[0] == 1]
-detected_inp_label = [(inp, lab) for inp, lab in zip(s_inp, s_label)]
-det_inp, det_label = list(zip(*detected_inp_label))
-det_inp = np.array(det_inp)
-det_label = np.array(det_label)
+def filter_inp_labels(inps, labels, filter_fn):
+    zipped_filter = [(inp, l) for inp, l in zip(inps, labels) if filter_fn(inp, l)]
+    filtered_inp, filtered_label = list(zip(*zipped_filter))
+    return torch.tensor(np.array(filtered_inp)), torch.tensor(np.array(filtered_label))
 
-# Correlation between camera view x position and image view x position
-plt.scatter(det_inp[:, 7], det_label[:, 1])
-plt.xlabel("Camera X")
-plt.ylabel("Detection X")
-plt.show()
-#
 
-# Correlation between camera view y position and image view y position
-plt.scatter(det_inp[:, 8], det_label[:, 2])
-plt.xlabel("Camera Y")
-plt.ylabel("Detection Y")
-plt.show()
+def group_data(inps, labels, group_fn):
+    inp_label_pairs = [(inp, lab) for inp, lab in zip(inps, labels)]
+    groups = [(k, list(g)) for k, g in groupby(sorted(inp_label_pairs, key=group_fn), key=group_fn)]
+    return groups
 
-# Correlation between class name and detection rate
-class_groups = [(k, list(g)) for k, g in groupby(sorted(detected_inp_label, key=lambda x: x[0][0]), key=lambda x: x[0][0])]
-class_props = []
-for k, g in class_groups:
-    print("Group: ", k)
-    g_inps, g_labs = list(zip(*g))
 
-    false_negs = [x for x in g_labs if x[0] < 0.1]
-    class_prop = 100.0 * len(false_negs) / len(g_labs)
-    class_props.append(class_prop)
+def count_tru_pos_v_false_neg(grouped_inp_labels):
+    group_tps = []
+    group_fns = []
+    for k, g in grouped_inp_labels:
+        g_inps, g_labs = list(zip(*g))
 
-plt.bar(range(len(class_groups)), class_props)
-plt.xlabel("Class Name")
-plt.ylabel("False Negative Percentage")
-plt.show()
+        fns = len([x for x in g_labs if x[0] < 0.1])
+        tps = len(g_labs) - fns
+        group_tps.append(tps)
+        group_fns.append(fns)
+    return group_tps, group_fns
 
-# Correlation between occlusion category and detection rate
-occlusion_groups = [(k, list(g)) for k, g in groupby(sorted(detected_inp_label, key=lambda x: x[0][2]), key=lambda x: x[0][2])]
-print(type(occlusion_groups))
-fn_props = []
-for k, g in occlusion_groups:
-    print("Group: ", k)
-    g_inps, g_labs = list(zip(*g))
 
-    false_negs = [x for x in g_labs if x[0] < 0.1]
-    fn_prop = 100.0 * len(false_negs) / len(g_labs)
-    fn_props.append(fn_prop)
-    print(f"Size: {len(g_labs)}, FNs: {len(false_negs)} FN-Prop: {fn_prop}")
+class SalientObstacleDataset(Dataset):
+    def __init__(self, s_input_path, s_label_path):
+        self.s_inp = torch.tensor(np.loadtxt(s_input_path))
+        self.s_label = torch.tensor(np.loadtxt(s_label_path))
 
-plt.bar([0, 1, 2, 3], fn_props)
-plt.xlabel("Occlusion Type")
-plt.ylabel("False Negative Percentage")
-plt.show()
+    def __len__(self):
+        return len(self.s_inp)
 
-# Correlation between trunctation float and detection rate
-truncation_groups = [(k, list(g)) for k, g in groupby(sorted(detected_inp_label, key=lambda x: discretize_trunctation(x[0][1])), key=lambda x: discretize_trunctation(x[0][1]))]
-trunc_fns = []
-for k, g in truncation_groups:
-    print("Group: ", k)
-    g_inps, g_labs = list(zip(*g))
+    def __getitem__(self, index) -> T_co:
+        return self.s_inp[index], self.s_label[index]
 
-    false_negs = [x for x in g_labs if x[0] < 0.1]
-    fn_prop = 100.0 * len(false_negs) / len(g_labs)
-    trunc_fns.append(fn_prop)
-    print(f"Size: {len(g_labs)}, FNs: {len(false_negs)} FN-Prop: {fn_prop}")
 
-plt.bar(range(4), trunc_fns)
-plt.xlabel("Truncation Amount")
-plt.ylabel("False Negative Percentage")
-plt.show()
+def run():
+    salient_input_path = "salient_dataset/salient_inputs_no_miscUnknown.txt"
+    salient_label_path = "salient_dataset/salient_labels_no_miscUnknown.txt"
 
-# Q: What are the *outputs* of the NN in the "towards" paper?
+    data_loader = DataLoader(SalientObstacleDataset(salient_input_path, salient_label_path), batch_size=1, shuffle=True)
 
-assert (len(s_inp) == len(s_label))
+    s_inp = np.loadtxt(salient_input_path)
+    s_label = np.loadtxt(salient_label_path)
 
-# TODO: Create torch dataset
+    # Correlation between camera view x position and image view x position
+    det_inp, det_label = filter_inp_labels(s_inp, s_label, lambda i, l: l[0] == 1)
+    print("Total objects: ", len(s_inp))
+    print("Total false negatives: ", len(s_inp) - len(det_inp))
+    plt.scatter(det_inp[:, 7], det_label[:, 1])
+    plt.xlabel("Camera X")
+    plt.ylabel("Detection X")
+    plt.show()
+
+    # Correlation between camera view y position and image view y position
+    plt.scatter(det_inp[:, 8], det_label[:, 2])
+    plt.xlabel("Camera Y")
+    plt.ylabel("Detection Y")
+    plt.show()
+
+    # Correlation between class name and detection rate
+    class_groups = group_data(s_inp, s_label, lambda x: x[0][0])
+    class_tps, class_fns = count_tru_pos_v_false_neg(class_groups)
+    classes = load_classes("data/kitti.names")
+
+    plt.bar(range(len(class_groups)), class_fns, label='False Neg')
+    plt.bar(range(len(class_groups)), class_tps, bottom=class_fns, label='True Pos')
+    plt.xlabel("Class Name")
+    plt.xticks(range(len(class_groups)), labels=classes[:-1])
+    plt.ylabel("Num Objects")
+    plt.legend()
+    plt.show()
+
+    # Correlation between occlusion category and detection rate
+    occlusion_groups = group_data(s_inp, s_label, lambda x: x[0][2])
+    occlusion_tps, occlusion_fns = count_tru_pos_v_false_neg(occlusion_groups)
+
+    plt.bar(range(len(occlusion_groups)), occlusion_fns, label='False Neg')
+    plt.bar(range(len(occlusion_groups)), occlusion_tps, bottom=occlusion_fns, label='Tru Pos')
+    plt.xlabel("Occlusion Type")
+    plt.xticks(range(len(occlusion_groups)), labels=['Full Vis', 'Part Vis', 'Largely Occluded', 'Unknown'][:-1])
+    plt.ylabel("Num Objects")
+    plt.legend()
+    plt.show()
+
+    # Correlation between trunctation float and detection rate
+    buckets = 4
+    trunc_groups = group_data(s_inp, s_label, lambda x: discretize_trunctation(x[0][1], buckets))
+    trunc_tps, trunc_fns = count_tru_pos_v_false_neg(trunc_groups)
+
+    plt.bar(range(len(trunc_groups)), trunc_fns, label="False Negs")
+    plt.bar(range(len(trunc_groups)), trunc_tps, bottom=trunc_fns, label="Tru Pos")
+    plt.xticks(range(len(trunc_groups)), labels=[f'{100.0 * n / buckets}-{100.0 * (n + 1) / buckets}%' for n in range(len(trunc_groups))])
+    plt.xlabel("Truncation Amount")
+    plt.ylabel("Num Objects")
+    plt.legend()
+    plt.show()
+
+    # Q: What are the *outputs* of the NN in the "towards" paper?
+
+    assert (len(s_inp) == len(s_label))
+
+    # TODO: Create torch dataset
+
+
+if __name__ == "__main__":
+    run()
