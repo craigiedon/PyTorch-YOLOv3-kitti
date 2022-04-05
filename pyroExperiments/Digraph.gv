@@ -1,11 +1,24 @@
 digraph {
-	sigma [label=sigma fillcolor=white shape=ellipse style=filled]
-	"linear.weight" [label="linear.weight" fillcolor=white shape=ellipse style=filled]
-	"linear.bias" [label="linear.bias" fillcolor=white shape=ellipse style=filled]
+	"fc1.weight" [label="fc1.weight" fillcolor=white shape=ellipse style=filled]
+	"fc1.bias" [label="fc1.bias" fillcolor=white shape=ellipse style=filled]
+	"fc2.weight" [label="fc2.weight" fillcolor=white shape=ellipse style=filled]
+	"fc2.bias" [label="fc2.bias" fillcolor=white shape=ellipse style=filled]
+	"fc3.weight" [label="fc3.weight" fillcolor=white shape=ellipse style=filled]
+	"fc3.bias" [label="fc3.bias" fillcolor=white shape=ellipse style=filled]
+	"fc1_log_sigma.weight" [label="fc1_log_sigma.weight" fillcolor=white shape=ellipse style=filled]
+	"fc1_log_sigma.bias" [label="fc1_log_sigma.bias" fillcolor=white shape=ellipse style=filled]
+	"fc2_log_sigma.weight" [label="fc2_log_sigma.weight" fillcolor=white shape=ellipse style=filled]
+	"fc2_log_sigma.bias" [label="fc2_log_sigma.bias" fillcolor=white shape=ellipse style=filled]
+	"fc3_log_sigma.weight" [label="fc3_log_sigma.weight" fillcolor=white shape=ellipse style=filled]
+	"fc3_log_sigma.bias" [label="fc3_log_sigma.bias" fillcolor=white shape=ellipse style=filled]
 	subgraph cluster_data {
 		label=data labeljust=r labelloc=b
 		obs [label=obs fillcolor=grey shape=ellipse style=filled]
 	}
-	"linear.weight" -> obs
-	sigma -> obs
+	"fc3.weight" -> obs
+	"fc2_log_sigma.weight" -> obs
+	"fc1_log_sigma.weight" -> obs
+	"fc1.weight" -> obs
+	"fc2.weight" -> obs
+	"fc3_log_sigma.weight" -> obs
 }

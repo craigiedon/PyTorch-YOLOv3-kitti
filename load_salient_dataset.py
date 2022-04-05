@@ -9,8 +9,12 @@ from torch.utils.data.dataset import T_co
 from utils.utils import load_classes
 
 
-def discretize_trunctation(trunc_val, buckets):
+def discretize_truncation(trunc_val, buckets):
     return int(trunc_val * (buckets - 1))
+
+
+def discretize_trunc_tensor(trunc_tensor, buckets):
+    return (trunc_tensor * (buckets - 1)).to(dtype=torch.long)
 
 
 def filter_inp_labels(inps, labels, filter_fn):
@@ -35,26 +39,26 @@ def count_tru_pos_v_false_neg(grouped_inp_labels):
         tps = len(g_labs) - fns
         group_tps.append(tps)
         group_fns.append(fns)
-    return group_tps, group_fns
+    return np.array(group_tps), np.array(group_fns)
 
 
-class SalientObstacleDataset(Dataset):
-    def __init__(self, s_input_path, s_label_path):
-        self.s_inp = torch.tensor(np.loadtxt(s_input_path))
-        self.s_label = torch.tensor(np.loadtxt(s_label_path))
-
-    def __len__(self):
-        return len(self.s_inp)
-
-    def __getitem__(self, index) -> T_co:
-        return self.s_inp[index], self.s_label[index]
+# class SalientObstacleDataset(Dataset):
+#     def __init__(self, s_input_path, s_label_path):
+#         # Format: <Class Num> <Truncation> <Occlusion> <alpha> <dim_w> <dim_l> <dim_h> <loc_x> <loc_y> <loc_z> <rot_y>
+#         self.s_inp = torch.tensor(np.loadtxt(s_input_path))
+#
+#         self.s_label = torch.tensor(np.loadtxt(s_label_path))
+#
+#     def __len__(self):
+#         return len(self.s_inp)
+#
+#     def __getitem__(self, index) -> T_co:
+#         return self.s_inp[index], self.s_label[index]
 
 
 def run():
     salient_input_path = "salient_dataset/salient_inputs_no_miscUnknown.txt"
     salient_label_path = "salient_dataset/salient_labels_no_miscUnknown.txt"
-
-    data_loader = DataLoader(SalientObstacleDataset(salient_input_path, salient_label_path), batch_size=1, shuffle=True)
 
     s_inp = np.loadtxt(salient_input_path)
     s_label = np.loadtxt(salient_label_path)
@@ -101,12 +105,13 @@ def run():
 
     # Correlation between trunctation float and detection rate
     buckets = 4
-    trunc_groups = group_data(s_inp, s_label, lambda x: discretize_trunctation(x[0][1], buckets))
+    trunc_groups = group_data(s_inp, s_label, lambda x: discretize_truncation(x[0][1], buckets))
     trunc_tps, trunc_fns = count_tru_pos_v_false_neg(trunc_groups)
 
     plt.bar(range(len(trunc_groups)), trunc_fns, label="False Negs")
     plt.bar(range(len(trunc_groups)), trunc_tps, bottom=trunc_fns, label="Tru Pos")
-    plt.xticks(range(len(trunc_groups)), labels=[f'{100.0 * n / buckets}-{100.0 * (n + 1) / buckets}%' for n in range(len(trunc_groups))])
+    plt.xticks(range(len(trunc_groups)),
+               labels=[f'{100.0 * n / buckets}-{100.0 * (n + 1) / buckets}%' for n in range(len(trunc_groups))])
     plt.xlabel("Truncation Amount")
     plt.ylabel("Num Objects")
     plt.legend()

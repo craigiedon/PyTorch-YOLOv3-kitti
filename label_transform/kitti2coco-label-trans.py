@@ -6,11 +6,11 @@ import sys
 # set your data_set absolute path
 # as for me, for example
 # test example
-kitti_img_path = '/home/craig/data/KITTI/images/training/'
-kitti_label_path = '/home/craig/data/KITTI/labels/training/'
+kitti_img_path = '/media/cinnes/Storage/data/KITTI/images/training/'
+kitti_label_path = '/media/cinnes/Storage/data/KITTI/labels/training/'
 
 # transformed lables to save path
-kitti_label_tosave_path = '/home/craig/data/KITTI/labels2coco/'
+kitti_label_tosave_path = '/media/cinnes/Storage/data/KITTI/labels2coco/training/'
 
 # the absolute ptah of your data set
 # kitti_data_real_path = '/home/pakcy/Desktop/PyTorch-YOLOv3/data/kitti/images/train/'

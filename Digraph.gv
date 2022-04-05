@@ -1,0 +1,15 @@
+digraph {
+	"ff_1.weight" [label="ff_1.weight" fillcolor=white shape=ellipse style=filled]
+	"ff_1.bias" [label="ff_1.bias" fillcolor=white shape=ellipse style=filled]
+	"ff_2.weight" [label="ff_2.weight" fillcolor=white shape=ellipse style=filled]
+	"ff_2.bias" [label="ff_2.bias" fillcolor=white shape=ellipse style=filled]
+	"ff_3.weight" [label="ff_3.weight" fillcolor=white shape=ellipse style=filled]
+	"ff_3.bias" [label="ff_3.bias" fillcolor=white shape=ellipse style=filled]
+	subgraph cluster_data {
+		label=data labeljust=r labelloc=b
+		obs [label=obs fillcolor=grey shape=ellipse style=filled]
+	}
+	"ff_3.weight" -> obs
+	"ff_1.weight" -> obs
+	"ff_2.weight" -> obs
+}

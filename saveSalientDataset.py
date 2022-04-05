@@ -155,18 +155,29 @@ def run():
                 s_obj["rot_y"]
             ]
             if mi is None:
-                label_array = [0, 0, 0, 0, 0]
+                label_array = [0, 0, 0, 0, 0, 0, 0, 0, 0]
             else:
                 im_x_min, im_y_min, im_x_max, im_y_max = converted_img_det[mi]
+                tru_x_min, tru_y_min, tru_x_max, tru_y_max = converted_tru_det[ti]
+
                 im_cx = (im_x_min + im_x_max) / 2.0
                 im_cy = (im_y_min + im_y_max) / 2.0
                 im_w = im_x_max - im_x_min
                 im_h = im_y_max - im_y_min
-                label_array = [1, im_cx, im_cy, im_w, im_h]
+
+                tru_cx = (tru_x_min + tru_x_max) / 2.0
+                tru_cy = (tru_y_min + tru_y_max) / 2.0
+                tru_w = tru_x_max - tru_x_min
+                tru_h = tru_y_max - tru_y_min
+
+                err_cx = im_cx - tru_cx
+                err_cy = im_cy - tru_cy
+                err_w = im_w - tru_w
+                err_h = im_h - tru_h
+                label_array = [1, im_cx, im_cy, im_w, im_h, err_cx, err_cy, err_w, err_h]
 
             salient_ds_inputs.append(input_array)
             salient_ds_labels.append(label_array)
-
 
         # for i, (cls_num, *_) in enumerate(tru_det):
         #     x_min, y_min, x_max, y_max = converted_tru_det[i]
@@ -203,9 +214,11 @@ def run():
     print("Total objs: ", total_objects)
 
     assert len(salient_ds_inputs) == len(salient_ds_labels) == total_objects
-    np.savetxt("salient_dataset/salient_inputs.txt", salient_ds_inputs, fmt=['%.0f', "%.3f", "%.0f", "%.3f","%.3f", "%.3f", "%.3f", "%.3f", "%.3f", "%.3f", "%.3f"],
+    np.savetxt("salient_dataset/salient_inputs.txt", salient_ds_inputs,
+               fmt=['%.0f', "%.3f", "%.0f", "%.3f", "%.3f", "%.3f", "%.3f", "%.3f", "%.3f", "%.3f", "%.3f"],
                header="Format: <Class Num> <Truncation> <Occlusion> <alpha> <dim_w> <dim_l> <dim_h> <loc_x> <loc_y> <loc_z> <rot_y>")
-    np.savetxt("salient_dataset/salient_labels.txt", salient_ds_labels, fmt='%.0f', header="Format: <Detected> <bbox cx> <bbox cy> <bbox_w> <bbox_h>")
+    np.savetxt("salient_dataset/salient_labels.txt", salient_ds_labels, fmt='%.0f',
+               header="Format: <Detected> <bbox cx> <bbox cy> <bbox_w> <bbox_h> <err cx> <err cy> <err w> <err h>")
 
     # Save in file with parseable stuff...
 
