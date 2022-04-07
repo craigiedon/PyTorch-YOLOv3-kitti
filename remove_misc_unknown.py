@@ -13,4 +13,5 @@ filtered_inp, filtered_label = filter_inp_labels(s_inp, s_label, filter_fn=lambd
 
 np.savetxt("salient_dataset/salient_inputs_no_miscUnknown.txt", filtered_inp, fmt=['%.0f', "%.3f", "%.0f", "%.3f","%.3f", "%.3f", "%.3f", "%.3f", "%.3f", "%.3f", "%.3f"],
            header="Format: <Class Num> <Truncation> <Occlusion> <alpha> <dim_w> <dim_l> <dim_h> <loc_x> <loc_y> <loc_z> <rot_y>")
-np.savetxt("salient_dataset/salient_labels_no_miscUnknown.txt", filtered_label, fmt='%.0f', header="Format: <Detected> <bbox cx> <bbox cy> <bbox_w> <bbox_h>")
+np.savetxt("salient_dataset/salient_labels_no_miscUnknown.txt", filtered_label, fmt='%.0f',
+           header="Format: <Detected> <bbox cx> <bbox cy> <bbox_w> <bbox_h> <err cx> <err cy> <err w> <err h>")

@@ -1,4 +1,4 @@
-# Format: <Detected> <bbox cx> <bbox cy> <bbox_w> <bbox_h>
+# Format: <Detected> <bbox cx> <bbox cy> <bbox_w> <bbox_h> <err cx> <err cy> <err w> <err h>
 1 762 226 95 161 0 1 -3 -4
 1 406 192 35 21 2 -0 -1 -1
 1 613 172 30 33 -1 0 0 0

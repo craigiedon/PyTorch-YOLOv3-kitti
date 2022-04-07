@@ -33,12 +33,13 @@ def logistic_baseline(training_set, test_set):
     bce = F.binary_cross_entropy(torch.tensor(lr_probs, dtype=torch.float), test_labels)
 
     metrics = {"roc_curve": (fpr, tpr, ft_threshs),
-               "pr_curve": (prec, rec, pr_threshs),
+               "pr_curve": (list(reversed(rec)), list(reversed(prec)), pr_threshs),
                "auc": auc,
                "avg_p": avg_p,
                "accuracy": accuracy,
                "b_accuracy": b_accuracy,
-               "bce": bce
+               "bce": bce,
+               "lowest_prob": np.min(lr_probs)
                }
 
     return lr, metrics

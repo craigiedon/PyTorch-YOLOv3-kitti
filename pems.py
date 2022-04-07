@@ -43,6 +43,8 @@ class SalientObstacleDataset(Dataset):
         #   0: <Detected>
         #   1-2: <bbox cx> <bbox cy>
         #   3-4: <bbox_w> <bbox_h>
+        #   5-6: <err cx> <err cy>
+        #   7-8: <err w> <err h>
         self.s_label = s_labels
 
     def __len__(self):
@@ -60,6 +62,29 @@ def normalize_salient_data(s_inputs, norm_dims):
     normed_inputs[:, norm_dims] = (normed_inputs[:, norm_dims] - in_mu[norm_dims]) / in_std[norm_dims]
 
     return normed_inputs, in_mu, in_std
+
+
+class PEMClass_Deterministic(nn.Module):
+    def __init__(self, in_d, out_d, h=20, use_cuda=False):
+        super().__init__()
+        self.ff_nn = nn.Sequential(
+            nn.Linear(in_d, h),
+            nn.BatchNorm1d(h),
+            nn.ReLU(),
+
+            nn.Linear(h, h),
+            nn.BatchNorm1d(h),
+            nn.ReLU(),
+
+            nn.Linear(h, out_d),
+        )
+
+        if use_cuda:
+            self.cuda()
+
+    def forward(self, x):
+        cat_logits = self.ff_nn(x)
+        return cat_logits
 
 
 class PEMClass(PyroModule):
@@ -96,8 +121,9 @@ class PEMClass(PyroModule):
         cat_logits = F.relu(cat_logits)
         cat_logits = self.ff_3(cat_logits)
 
-        with pyro.plate("data", x.shape[0], dim=-1):
-            obs = pyro.sample("obs", dist.Categorical(logits=cat_logits), obs=y)
+        with pyro.plate("data", x.shape[0], dim=-2):
+            obs = pyro.sample("obs", dist.Bernoulli(logits=cat_logits), obs=y)
+            # obs = pyro.sample("obs", dist.Categorical(logits=cat_logits), obs=y)
 
         return cat_logits
 
@@ -132,13 +158,46 @@ class PEMReg(PyroModule):
         return mu, log_sig
 
 
-def save_model(model_guide, param_store, f_name: str):
+class PEMReg_Deterministic(nn.Module):
+    def __init__(self, in_d, out_d, h=20, use_cuda=True):
+        super().__init__()
+        self.ff_nn = nn.Sequential(
+            nn.Linear(in_d, h),
+            nn.BatchNorm1d(h),
+            nn.ReLU(),
+
+            nn.Linear(h, h),
+            nn.BatchNorm1d(h),
+            nn.ReLU(),
+
+            nn.Linear(h, out_d),
+        )
+
+        if use_cuda:
+            self.cuda()
+
+    def forward(self, x):
+        output = self.ff_nn(x)
+        return output
+
+
+def save_model_bnn(model_guide, param_store, f_name: str):
     param_store.save(f"{f_name}_guide_params.pt")
     torch.save(model_guide, f"{f_name}_guide.pt")
 
 
-def load_model(guide_path: str, guide_params_path: str):
+def load_model_bnn(guide_path: str, guide_params_path: str):
     guide = torch.load(guide_path)
     p_store = pyro.get_param_store()
     p_store.load(guide_params_path)
     return guide
+
+
+def save_model_det(model, f_name: str):
+    torch.save(model.state_dict(), f_name)
+
+
+def load_model_det(model_skeleton, model_path: str):
+    model_skeleton.load_state_dict(torch.load(model_path))
+    model_skeleton.eval()
+    return model_skeleton

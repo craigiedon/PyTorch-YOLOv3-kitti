@@ -1,4 +1,4 @@
-from pems import PEMClass, save_model
+from pems import PEMClass, save_model_bnn
 import pyro
 import time
 import numpy as np
@@ -20,13 +20,13 @@ import torch.nn.functional as F
 from load_salient_dataset import group_data, count_tru_pos_v_false_neg, discretize_truncation, discretize_trunc_tensor, \
     filter_inp_labels
 from pems import PEMClass, SalientObstacleDataset
-from pyro.infer.autoguide import AutoDiagonalNormal, AutoMultivariateNormal
+from pyro.infer.autoguide import AutoDiagonalNormal, AutoMultivariateNormal, AutoLowRankMultivariateNormal
 
 import numpy as np
 import torch
 
 
-def k_fold_validaton(dataset, k, train_func):
+def k_fold_validaton_bnn(dataset, k, train_func, experiment_name: str):
     kf = StratifiedKFold(n_splits=k)
     print(len(dataset))
     print(len(dataset.s_label[:, 0]))
@@ -34,9 +34,9 @@ def k_fold_validaton(dataset, k, train_func):
     for ki, (train_idx, test_idx) in enumerate(kf.split(dataset, dataset.s_label[:, 0])):
         train_set = Subset(dataset, train_idx)
         test_set = Subset(dataset, test_idx)
-        results_folder = f"saved_models/pem_class_k{ki}"
+        results_folder = f"saved_models/{experiment_name}_k{ki}"
         os.makedirs(results_folder, exist_ok=True)
-        kth_model, kth_guide = train_func(train_set, 2500, results_folder)
+        kth_model, kth_guide = train_func(train_set, 10000, results_folder)
         eval_metrics = eval_model(kth_model, kth_guide, test_set)
         print(f"K-{ki}\t Accuracy: {eval_metrics['accuracy']}, AUC-ROC: {eval_metrics['auc']}, Avg-Precision: {eval_metrics['avg_p']}")
 
@@ -48,10 +48,10 @@ def train_model(train_set: Dataset, epochs: int, results_folder: str):
     b_size = 8000
     train_loader = DataLoader(train_set, batch_size=b_size, shuffle=True)
 
-    model = PEMClass(14, 2, 20, use_cuda=True)
+    model = PEMClass(14, 1, 20, use_cuda=True)
     pyro.clear_param_store()
 
-    guide = AutoDiagonalNormal(poutine.block(model, hide=['obs'])).cuda()
+    guide = AutoLowRankMultivariateNormal(poutine.block(model, hide=['obs'])).cuda()
 
     adam = pyro.optim.Adam({"lr": 1e-3})
     loss_elb = Trace_ELBO(vectorize_particles=True)
@@ -64,31 +64,34 @@ def train_model(train_set: Dataset, epochs: int, results_folder: str):
             train_x = train_x.cuda()
             train_y = train_y.cuda()
 
-            train_loss += svi.step(train_x, train_y[:, 0])
+            train_loss += svi.step(train_x, train_y[:, [0]])
 
         train_loss = train_loss / len(train_set)
 
         if j % 10 == 0:
             print(f"[t:  {j + 1}] ELBO: {train_loss:.4f}")
 
-    save_model(guide, pyro.get_param_store(), join(results_folder, "pem_class_train_full"))
+    save_model_bnn(guide, pyro.get_param_store(), join(results_folder, "pem_class_train_full"))
     return model, guide
 
 
 def eval_model(model, guide, test_set):
-    combined_preds = []
-    combined_trus = []
+    combined_preds = torch.tensor([]).cuda()
+    combined_trus = torch.tensor([]).cuda()
 
     test_loader = DataLoader(test_set, 8000)
-    test_predictive = Predictive(model, guide=guide, num_samples=250, return_sites={"obs", "_RETURN"})
+    test_predictive = Predictive(model, guide=guide, num_samples=800, return_sites={"obs", "_RETURN"})
 
     for test_x, test_y in test_loader:
         test_x = test_x.cuda()
         test_y = test_y.cuda()
-        pred_test_y = F.softmax(test_predictive(test_x)["_RETURN"], dim=2).mean(0)[:, 1]
+        pred_test_y = torch.sigmoid(test_predictive(test_x)["_RETURN"]).mean(0)
 
-        combined_preds.extend(pred_test_y.detach().cpu())
-        combined_trus.extend(test_y[:, 0].detach().cpu())
+        combined_preds = torch.cat((combined_preds, pred_test_y))
+        combined_trus = torch.cat((combined_trus, test_y[:, [0]]))
+
+    combined_preds = combined_preds.detach().cpu().numpy()
+    combined_trus = combined_trus.detach().cpu().numpy()
 
     fpr, tpr, ft_threshs = roc_curve(combined_trus, combined_preds)
     prec, rec, pr_threshs = precision_recall_curve(combined_trus, combined_preds)
@@ -101,25 +104,25 @@ def eval_model(model, guide, test_set):
     b_accuracy = balanced_accuracy_score(combined_trus, np.round(combined_preds))
 
     return {"roc_curve": (fpr, tpr, ft_threshs),
-            "pr_curve": (prec, rec, pr_threshs),
+            "pr_curve": (list(reversed(rec)), list(reversed(prec)), pr_threshs),
             "auc": auc,
             "avg_p": avg_p,
             "accuracy": accuracy,
             "b_accuracy": b_accuracy,
-            "bce": bce
+            "bce": bce,
+            "lowest_prob": np.min(combined_preds)
             }
 
 
 def run():
-    salient_input_path = "salient_dataset/salient_inputs_no_miscUnknown.txt"
-    salient_label_path = "salient_dataset/salient_labels_no_miscUnknown.txt"
-    s_inputs = torch.tensor(np.loadtxt(salient_input_path), dtype=torch.float)
-    s_labels = torch.tensor(np.loadtxt(salient_label_path), dtype=torch.float)
+    s_inputs = torch.tensor(np.loadtxt("salient_dataset/salient_inputs_no_miscUnknown.txt"), dtype=torch.float)
+    s_labels = torch.tensor(np.loadtxt("salient_dataset/salient_labels_no_miscUnknown.txt"), dtype=torch.float)
     full_data_set = SalientObstacleDataset(s_inputs, s_labels)
-    k_fold_validaton(full_data_set, 10, train_model)
+    k_fold_validaton_bnn(full_data_set, 5, train_model, "bnn")
     train_model(full_data_set, 5000, "saved_models/full_set/")
 
 
+"""
 def test_run():
     salient_input_path = "salient_dataset/salient_inputs_no_miscUnknown.txt"
     salient_label_path = "salient_dataset/salient_labels_no_miscUnknown.txt"
@@ -206,9 +209,9 @@ def test_run():
             print(
                 f"[t:  {j + 1}] ELBO: {train_loss:.4f} AUC_ROC: {auc:.4f}, Accuracy: {accuracy}, B-Accuracy: {b_accuracy}, Average Precision: {avg_p}")
 
-            save_model(guide, pyro.get_param_store(), f"saved_models/checkpoints/pem_class_train_e{j}")
+            save_model_bnn(guide, pyro.get_param_store(), f"saved_models/checkpoints/pem_class_train_e{j}")
 
-    save_model(guide, pyro.get_param_store(), "saved_models/pem_class_train_full")
+    save_model_bnn(guide, pyro.get_param_store(), "saved_models/pem_class_train_full")
 
     fig, (ax_1, ax_2) = plt.subplots(1, 2, figsize=(10, 5))
     ax_1.plot(fpr, tpr, label=f"ROC: {auc:.4f}", color="orange")
@@ -224,6 +227,7 @@ def test_run():
     ax_2.legend()
 
     plt.show()
+"""
 
 
 if __name__ == "__main__":

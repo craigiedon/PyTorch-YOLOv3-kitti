@@ -3,7 +3,7 @@ from sklearn.metrics import roc_curve, precision_recall_curve, roc_auc_score, av
     balanced_accuracy_score
 from torch.utils.data import random_split, DataLoader
 
-from pems import load_model, PEMClass, SalientObstacleDataset
+from pems import load_model_bnn, PEMClass, SalientObstacleDataset
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
@@ -27,14 +27,12 @@ def plot_prc(ax, rec, prec, avg_p, label_name: str):
 
 
 def run():
-    model = PEMClass(14, 2, use_cuda=True)
-    guide = load_model("saved_models/pem_class_train_full_guide.pt",
-                       "saved_models/pem_class_train_full_guide_params.pt")
+    model = PEMClass(14, 1, use_cuda=True)
+    guide = load_model_bnn("saved_models/pem_class_train_full_guide.pt",
+                           "saved_models/pem_class_train_full_guide_params.pt")
 
-    salient_input_path = "salient_dataset/salient_inputs_no_miscUnknown.txt"
-    salient_label_path = "salient_dataset/salient_labels_no_miscUnknown.txt"
-    s_inputs = torch.tensor(np.loadtxt(salient_input_path), dtype=torch.float)
-    s_labels = torch.tensor(np.loadtxt(salient_label_path), dtype=torch.float)
+    s_inputs = torch.tensor(np.loadtxt("salient_dataset/salient_inputs_no_miscUnknown.txt"), dtype=torch.float)
+    s_labels = torch.tensor(np.loadtxt("salient_dataset/salient_labels_no_miscUnknown.txt"), dtype=torch.float)
 
     skip = 1
     full_data_set = SalientObstacleDataset(s_inputs[::skip], s_labels[::skip])
@@ -43,12 +41,12 @@ def run():
 
     b_size = 1024
     test_loader = DataLoader(full_data_set, batch_size=b_size, shuffle=True)
-    test_predictive = Predictive(model, guide=guide, num_samples=250, return_sites={"obs", "_RETURN"})
+    test_predictive = Predictive(model, guide=guide, num_samples=800, return_sites={"obs", "_RETURN"})
 
     for eval_x, eval_y in test_loader:
         eval_x = eval_x.cuda()
         eval_y = eval_y.cuda()
-        pred_test_y = F.softmax(test_predictive(eval_x)["_RETURN"], dim=2).mean(0)[:, 1]
+        pred_test_y = torch.sigmoid(test_predictive(eval_x)["_RETURN"]).mean(0)
 
         combined_preds.extend(pred_test_y.detach().cpu())
         combined_trus.extend(eval_y[:, 0].detach().cpu())
