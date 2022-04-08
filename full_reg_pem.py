@@ -46,7 +46,7 @@ def run():
         error_sizes = np.linalg.norm(test_labels, axis=1)
         max_eid = np.argmax(error_sizes)
 
-        print(f"Max Error: {test_labels[max_eid]}, mag: {error_sizes[max_eid]}")
+        print(f"Error Mean: {np.mean(error_sizes)} Error Std: {np.std(error_sizes)} Max Error: {test_labels[max_eid]}, mag: {error_sizes[max_eid]}")
         print(f"Sanity check: {torch.sqrt(loss_fn(torch.zeros(1, 2), test_labels[max_eid].view(1, 2)))}")
 
         reg = linear_model.Ridge()
@@ -55,7 +55,7 @@ def run():
         reg_preds = reg.predict(test_ins)
 
         lin_mse = loss_fn(torch.tensor(reg_preds), test_labels)
-        print(f"Linear Reg MSE: {lin_mse}")
+        print(f"Linear Reg MSE: {lin_mse}, Avg Pred Dist: {np.mean(np.linalg.norm(reg_preds, axis=1))} Std: {np.std(np.linalg.norm(reg_preds, axis=1))}")
 
         zero_mse = loss_fn(torch.zeros(len(test_labels), 2), test_labels)
         print(f"Guess-Zero MSE: {zero_mse}")
