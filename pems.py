@@ -170,6 +170,14 @@ class PEMReg_Deterministic(nn.Module):
             nn.BatchNorm1d(h),
             nn.ReLU(),
 
+            nn.Linear(h, h),
+            nn.BatchNorm1d(h),
+            nn.ReLU(),
+
+            nn.Linear(h, h),
+            nn.BatchNorm1d(h),
+            nn.ReLU(),
+
             nn.Linear(h, out_d),
         )
 

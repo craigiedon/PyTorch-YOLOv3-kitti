@@ -61,9 +61,10 @@ def run():
         print(f"Guess-Zero MSE: {zero_mse}")
 
         model = PEMReg_Deterministic(14, 2, h=50, use_cuda=True)
-        optimizer = torch.optim.Adam(model.parameters())
+        optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 1000, 0.1)
 
-        epochs = 5000
+        epochs = 10000
         epoch_t_losses = []
         epoch_v_losses = []
 
@@ -77,7 +78,7 @@ def run():
                 tx = tx.cuda()
                 ty = ty.cuda()
                 optimizer.zero_grad()
-                err_label = ty[:, [5, 6]]
+                err_label = ty[:, 5:7]
                 pred_label = model(tx)
                 loss = loss_fn(pred_label, err_label)
                 loss.backward()
@@ -92,7 +93,7 @@ def run():
                     tx = tx.cuda()
                     ty = ty.cuda()
                     optimizer.zero_grad()
-                    err_label = ty[:, [5, 6]]
+                    err_label = ty[:, 5:7]
                     pred_label = model(tx)
                     loss = loss_fn(pred_label, err_label)
                     loss.backward()
@@ -100,10 +101,14 @@ def run():
                     val_losses.append(loss.item())
                 avg_val_loss = np.mean(val_losses)
 
-                print(f"E-{i}, MSE-T: {avg_train_loss}, MSE-V: {avg_val_loss}")
+                print(f"E-{i}, MSE-T: {avg_train_loss}, MSE-V: {avg_val_loss}, lr: {scheduler.get_last_lr()}")
 
                 epoch_t_losses.append(avg_train_loss)
                 epoch_v_losses.append(avg_val_loss)
+                # print(f"lr: {scheduler.get_last_lr()}")
+
+            if i < 1001:
+                scheduler.step()
 
         plt.plot(range(len(epoch_t_losses)), epoch_t_losses, label="Train")
         plt.plot(range(len(epoch_v_losses)), epoch_v_losses, label="Val")
