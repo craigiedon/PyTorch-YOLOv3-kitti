@@ -18,7 +18,11 @@ def run():
     s_inputs = torch.tensor(np.loadtxt("salient_dataset/salient_inputs_no_miscUnknown.txt"), dtype=torch.float)
     s_labels = torch.tensor(np.loadtxt("salient_dataset/salient_labels_no_miscUnknown.txt"), dtype=torch.float)
     full_data_set = SalientObstacleDataset(s_inputs, s_labels)
+
     k_fold_validaton_det(full_data_set, 5, train_det_model, "det_baseline")
+
+    os.makedirs(f"saved_models/det_baseline_full", exist_ok=True)
+    train_det_model(full_data_set, 300, f"saved_models/det_baseline_full")
 
 
 def k_fold_validaton_det(dataset, k, train_func, experiment_name: str):
@@ -29,7 +33,7 @@ def k_fold_validaton_det(dataset, k, train_func, experiment_name: str):
         test_set = Subset(dataset, test_idx)
         results_folder = f"saved_models/{experiment_name}_k{ki}"
         os.makedirs(results_folder, exist_ok=True)
-        kth_model = train_func(train_set, 1000, results_folder)
+        kth_model = train_func(train_set, 300, results_folder)
         eval_metrics = eval_model_det(kth_model, test_set)
         print(
             f"K-{ki}\t BCE: {eval_metrics['bce']} Accuracy: {eval_metrics['accuracy']}, AUC-ROC: {eval_metrics['auc']}, Avg-Precision: {eval_metrics['avg_p']}")

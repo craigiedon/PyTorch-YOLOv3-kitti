@@ -1,4 +1,5 @@
 from sklearn.linear_model import LogisticRegression
+from sklearn import svm
 import torch
 import numpy as np
 import torch.nn.functional as F
@@ -45,6 +46,65 @@ def logistic_baseline(training_set, test_set):
     return lr, metrics
 
 
+def guess_mu(training_set, test_set):
+    training_ins, training_labels = training_set[:][0], training_set[:][1][:, 0]
+    test_ins, test_labels = test_set[:][0], test_set[:][1][:, 0]
+
+    mu = torch.mean(training_labels).item()
+    guess_mu_probs = mu * np.ones(len(test_set))
+    guess_mu_preds = guess_mu_probs.round()
+
+    fpr, tpr, ft_threshs = roc_curve(test_labels, guess_mu_probs)
+    prec, rec, pr_threshs = precision_recall_curve(test_labels, guess_mu_probs)
+
+    auc = roc_auc_score(test_labels, guess_mu_probs)
+    avg_p = average_precision_score(test_labels, guess_mu_probs)
+    accuracy = accuracy_score(test_labels, guess_mu_preds)
+    b_accuracy = balanced_accuracy_score(test_labels, guess_mu_preds)
+
+    bce = F.binary_cross_entropy(torch.tensor(guess_mu_probs, dtype=torch.float), test_labels)
+
+    metrics = {"roc_curve": (fpr, tpr, ft_threshs),
+               "pr_curve": (list(reversed(rec)), list(reversed(prec)), pr_threshs),
+               "auc": auc,
+               "avg_p": avg_p,
+               "accuracy": accuracy,
+               "b_accuracy": b_accuracy,
+               "bce": bce,
+               "lowest_prob": np.min(guess_mu_probs)
+               }
+
+    return metrics
+
+
+def guess_one(test_set):
+    test_ins, test_labels = test_set[:][0], test_set[:][1][:, 0]
+
+    guess_one_preds = np.ones(len(test_set))
+
+    fpr, tpr, ft_threshs = roc_curve(test_labels, guess_one_preds)
+    prec, rec, pr_threshs = precision_recall_curve(test_labels, guess_one_preds)
+
+    auc = roc_auc_score(test_labels, guess_one_preds)
+    avg_p = average_precision_score(test_labels, guess_one_preds)
+    accuracy = accuracy_score(test_labels, guess_one_preds)
+    b_accuracy = balanced_accuracy_score(test_labels, guess_one_preds)
+
+    bce = F.binary_cross_entropy(torch.tensor(guess_one_preds, dtype=torch.float), test_labels)
+
+    metrics = {"roc_curve": (fpr, tpr, ft_threshs),
+               "pr_curve": (list(reversed(rec)), list(reversed(prec)), pr_threshs),
+               "auc": auc,
+               "avg_p": avg_p,
+               "accuracy": accuracy,
+               "b_accuracy": b_accuracy,
+               "bce": bce,
+               "lowest_prob": np.min(guess_one_preds)
+               }
+
+    return metrics
+
+
 def run():
     salient_input_path = "salient_dataset/salient_inputs_no_miscUnknown.txt"
     salient_label_path = "salient_dataset/salient_labels_no_miscUnknown.txt"
@@ -60,7 +120,8 @@ def run():
         test_set = Subset(full_data_set, test_idx)
 
         lr, metrics = logistic_baseline(training_set, test_set)
-        print(f"K: {ki} --- AUC: {metrics['auc']}, Avg-P: {metrics['avg_p']}, Accuracy: {metrics['accuracy']}, b_accuracy: {metrics['b_accuracy']}")
+        print(
+            f"K: {ki} --- AUC: {metrics['auc']}, Avg-P: {metrics['avg_p']}, Accuracy: {metrics['accuracy']}, b_accuracy: {metrics['b_accuracy']}")
 
         fpr, tpr, _ = metrics["roc_curve"]
         prec, rec, _ = metrics["pr_curve"]

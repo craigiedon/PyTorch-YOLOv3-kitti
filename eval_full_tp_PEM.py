@@ -11,15 +11,15 @@ import torch.nn.functional as F
 
 
 def plot_roc(ax, fpr, tpr, auc, label_name: str):
-    ax.plot(fpr, tpr, label=f"{label_name} ROC: {auc:.2f}")
-    ax.plot(np.linspace(0, 1), np.linspace(0, 1), color="black", linestyle='--')
+    ax.plot(fpr, tpr, label=f"{label_name} ROC: {auc:.3f}")
+    # ax.plot(np.linspace(0, 1), np.linspace(0, 1), color="black", linestyle='--')
     ax.set_xlabel("False Positive Rate")
     ax.set_ylabel("True Positive Rate")
     ax.legend()
 
 
 def plot_prc(ax, rec, prec, avg_p, label_name: str):
-    ax.plot(rec, prec, label=f"{label_name} Avg-P: {avg_p:.2f}")
+    ax.plot(rec, prec, label=f"{label_name} Avg-P: {avg_p:.3f}")
     # ax_2.plot(np.linspace(0, 1), np.linspace(0, 1), color="blue", linestyle='--')
     ax.set_xlabel("Recall")
     ax.set_ylabel("Prec")
@@ -46,7 +46,8 @@ def run():
     for eval_x, eval_y in test_loader:
         eval_x = eval_x.cuda()
         eval_y = eval_y.cuda()
-        pred_test_y = torch.sigmoid(test_predictive(eval_x)["_RETURN"]).mean(0)
+        output = test_predictive(eval_x)
+        pred_test_y = torch.sigmoid(output["_RETURN"]).mean(0)
 
         combined_preds.extend(pred_test_y.detach().cpu())
         combined_trus.extend(eval_y[:, 0].detach().cpu())

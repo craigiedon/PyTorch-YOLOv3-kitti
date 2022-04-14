@@ -123,14 +123,21 @@ class PEMClass(PyroModule):
 
         with pyro.plate("data", x.shape[0], dim=-2):
             obs = pyro.sample("obs", dist.Bernoulli(logits=cat_logits), obs=y)
-            # obs = pyro.sample("obs", dist.Categorical(logits=cat_logits), obs=y)
 
         return cat_logits
 
 
 class PEMReg(PyroModule):
-    def __init__(self, in_d, out_d, h=20):
+    def __init__(self, in_d, out_d, h=20, use_cuda=True):
         super().__init__()
+
+        self.t0 = torch.tensor(0.0)
+        self.t1 = torch.tensor(1.0)
+
+        if use_cuda:
+            self.t0 = self.t0.cuda()
+            self.t1 = self.t1.cuda()
+
         self.ff1_mu = PyroModule[nn.Linear](in_d, h)
         self.ff2_mu = PyroModule[nn.Linear](h, h)
         self.ff3_mu = PyroModule[nn.Linear](h, out_d)
@@ -138,6 +145,24 @@ class PEMReg(PyroModule):
         self.ff1_log_sig = PyroModule[nn.Linear](in_d, h)
         self.ff2_log_sig = PyroModule[nn.Linear](h, h)
         self.ff3_log_sig = PyroModule[nn.Linear](h, out_d)
+
+        self.ff1_mu.weight = PyroSample(dist.Normal(self.t0, self.t1).expand([h, in_d]).to_event(2))
+        self.ff1_mu.bias = PyroSample(dist.Normal(self.t0, self.t1).expand([h]).to_event(1))
+
+        self.ff2_mu.weight = PyroSample(dist.Normal(self.t0, self.t1).expand([h, h]).to_event(2))
+        self.ff2_mu.bias = PyroSample(dist.Normal(self.t0, self.t1).expand([h]).to_event(1))
+
+        self.ff3_mu.weight = PyroSample(dist.Normal(self.t0, self.t1).expand([out_d, h]).to_event(2))
+        self.ff3_mu.bias = PyroSample(dist.Normal(self.t0, self.t1).expand([out_d]).to_event(1))
+
+        self.ff1_log_sig.weight = PyroSample(dist.Normal(self.t0, self.t1).expand([h, in_d]).to_event(2))
+        self.ff1_log_sig.bias = PyroSample(dist.Normal(self.t0, self.t1).expand([h]).to_event(1))
+
+        self.ff2_log_sig.weight = PyroSample(dist.Normal(self.t0, self.t1).expand([h, h]).to_event(2))
+        self.ff2_log_sig.bias = PyroSample(dist.Normal(self.t0, self.t1).expand([h]).to_event(1))
+
+        self.ff3_log_sig.weight = PyroSample(dist.Normal(self.t0, self.t1).expand([out_d, h]).to_event(2))
+        self.ff3_log_sig.bias = PyroSample(dist.Normal(self.t0, self.t1).expand([out_d]).to_event(1))
 
     def forward(self, x, y=None):
         mu = self.ff1_mu(x)
@@ -153,15 +178,15 @@ class PEMReg(PyroModule):
         log_sig = self.ff3_log_sig(log_sig)
 
         with pyro.plate("data", x.shape[0], dim=-2):
-            obs = pyro.sample("obs", dist.Normal(mu, torch.exp(log_sig)), obs=y)
+            obs = pyro.sample("obs", dist.Normal(mu, torch.exp(log_sig) + 1e-5), obs=y)
 
-        return mu, log_sig
+        return torch.stack((mu, log_sig))
 
 
-class PEMReg_Deterministic(nn.Module):
+class PEMReg_Aleatoric(nn.Module):
     def __init__(self, in_d, out_d, h=20, use_cuda=True):
         super().__init__()
-        self.ff_nn = nn.Sequential(
+        self.ff_mu = nn.Sequential(
             nn.Linear(in_d, h),
             nn.BatchNorm1d(h),
             nn.ReLU(),
@@ -170,7 +195,33 @@ class PEMReg_Deterministic(nn.Module):
             nn.BatchNorm1d(h),
             nn.ReLU(),
 
+            nn.Linear(h, out_d)
+        )
+        self.ff_log_sig = nn.Sequential(
+            nn.Linear(in_d, h),
+            nn.BatchNorm1d(h),
+            nn.ReLU(),
+
             nn.Linear(h, h),
+            nn.BatchNorm1d(h),
+            nn.ReLU(),
+
+            nn.Linear(h, out_d)
+        )
+        if use_cuda:
+            self.cuda()
+
+    def forward(self, x):
+        mu = self.ff_mu(x)
+        log_sig = self.ff_log_sig(x)
+        return mu, log_sig
+
+
+class PEMReg_Deterministic(nn.Module):
+    def __init__(self, in_d, out_d, h=20, use_cuda=True):
+        super().__init__()
+        self.ff_nn = nn.Sequential(
+            nn.Linear(in_d, h),
             nn.BatchNorm1d(h),
             nn.ReLU(),
 
